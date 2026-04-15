@@ -1,0 +1,7 @@
+- Use service-based architecture.
+- Each service has one responsibility.
+- All external APIs must go through adapter modules.
+- Core decision logic must stay framework-agnostic.
+- Do not place business logic in controllers or route handlers.
+- Keep ingestion, matching, edge scoring, and risk filtering as separate layers.
+- Prefer composable modules over tightly coupled service classes.

@@ -1,0 +1,7 @@
+- TypeScript strict mode is required.
+- Prefer pure functions for calculations and ranking logic.
+- Validate all external inputs with typed schemas before use.
+- Log critical decisions and rejection reasons.
+- Fail loudly with structured errors instead of silent fallbacks.
+- Use clear, explicit names such as `forecastProb`, `marketProb`, and `edge`.
+- Keep modules small and focused; extract shared utilities into packages.

@@ -1,0 +1,23 @@
+[
+  {
+    "id": "pm-nyc-high-temp-2026-04-15",
+    "title": "NYC High Temperature on Apr 15",
+    "description": "What will the official NYC high temperature be on Apr 15?",
+    "rules": "Resolves by NOAA station KNYC daily high in Celsius.",
+    "bucketLabels": [
+      "<=15C",
+      "16-20C",
+      "21-25C",
+      ">=26C"
+    ],
+    "marketDate": "2026-04-15T00:00:00Z",
+    "liquidityUsd": 16500,
+    "spreadBps": 145,
+    "bucketPrices": {
+      "<=15C": 0.14,
+      "16-20C": 0.39,
+      "21-25C": 0.33,
+      ">=26C": 0.14
+    }
+  }
+]

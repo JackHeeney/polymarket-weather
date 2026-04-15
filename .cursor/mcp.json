@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "polymarket-read": {
+      "url": "${env:POLYMARKET_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${env:POLYMARKET_MCP_TOKEN}"
+      }
+    },
+    "weather-provider": {
+      "url": "${env:WEATHER_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${env:WEATHER_MCP_TOKEN}"
+      }
+    }
+  }
+}

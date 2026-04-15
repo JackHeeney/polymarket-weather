@@ -1,0 +1,28 @@
+[
+  {
+    "id": "wx-nyc-rain-2026-04-15-23",
+    "provider": "mock-weather-api",
+    "city": "NYC",
+    "kind": "PRECIPITATION",
+    "probability": 0.63,
+    "startTime": "2026-04-15T18:00:00Z",
+    "endTime": "2026-04-15T23:00:00Z",
+    "threshold": null,
+    "unit": null,
+    "uncertainty": 0.12,
+    "observedAt": "2026-04-14T12:00:00Z"
+  },
+  {
+    "id": "wx-nyc-temp-2026-04-15-23",
+    "provider": "mock-weather-api",
+    "city": "NYC",
+    "kind": "TEMPERATURE",
+    "probability": 0.58,
+    "startTime": "2026-04-15T20:00:00Z",
+    "endTime": "2026-04-15T23:00:00Z",
+    "threshold": 20,
+    "unit": "C",
+    "uncertainty": 0.1,
+    "observedAt": "2026-04-14T12:00:00Z"
+  }
+]

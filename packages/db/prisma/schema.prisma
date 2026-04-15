@@ -1,0 +1,47 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Market {
+  id            String    @id @default(cuid())
+  externalId    String    @unique
+  title         String
+  description   String
+  ruleText      String
+  city          String
+  station       String
+  unit          String
+  marketDate    DateTime
+  bucketLabels  String
+  resolutionSource String
+  parsingConfidence Float
+  liquidityUsd  Float
+  spreadBps     Int
+  bucketPricesJson String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  journals     JournalEntry[]
+}
+
+model JournalEntry {
+  id              String   @id @default(cuid())
+  marketId        String
+  predictedBucket String?
+  predictedProbability Float?
+  recommendation  String
+  manualBetPlaced Boolean
+  manualBetBucket String?
+  entryPrice      Float?
+  exitPrice       Float?
+  resolvedBucket  String?
+  profitLoss      Float?
+  rationale       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  market          Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+}

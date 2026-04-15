@@ -1,0 +1,7 @@
+- Never assume data is clean.
+- Always validate API responses before normalisation.
+- Use typed schemas for all external and persisted data contracts.
+- Separate ingestion, core logic, and output layers.
+- Avoid tight coupling between services.
+- Ensure every calculation is testable in isolation.
+- Keep execution manual-only until risk and matching quality is proven.
