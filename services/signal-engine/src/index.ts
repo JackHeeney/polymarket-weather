@@ -3,7 +3,12 @@ import type { BucketEstimate, DecisionResult, ParsedMarket, WeatherSnapshot } fr
 const parseBucketMidpoint = (bucket: string): number => {
   const clean = bucket.replace("C", "").replace(">=", "").replace("<=", "").trim();
   if (clean.includes("-")) {
-    const [low, high] = clean.split("-").map((part) => Number(part));
+    const [rawLow, rawHigh] = clean.split("-");
+    const low = Number(rawLow);
+    const high = Number(rawHigh);
+    if (!Number.isFinite(low) || !Number.isFinite(high)) {
+      return Number.NaN;
+    }
     return (low + high) / 2;
   }
   return Number(clean);

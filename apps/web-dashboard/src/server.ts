@@ -89,6 +89,10 @@ app.get("/", (_req, res) => {
       .mode-badge-live { background: #e9f9ef; color: #166534; border: 1px solid #b6e8c7; }
       .validation-note { margin-top: 0.5rem; color: #1f4f8a; font-size: 13px; }
       .validation-counter { margin-top: 0.4rem; font-weight: bold; color: #1f4f8a; }
+      .priority-high { color: #8b0000; font-weight: bold; }
+      .priority-medium { color: #8a5a00; font-weight: bold; }
+      .priority-low { color: #1f4f8a; font-weight: bold; }
+      .stale-warning { margin-top: 0.5rem; color: #8a5a00; font-weight: bold; }
     </style>
   </head>
   <body>
@@ -150,6 +154,7 @@ app.get("/", (_req, res) => {
       <div class="summary" id="entrySummary"></div>
       <br />
       <button id="saveEntryBtn">Save Entry</button>
+      <p class="muted">Confirm trade method. Both users must agree before continuing.</p>
       <p id="entryStatus" class="muted"></p>
     </section>
 
@@ -168,6 +173,8 @@ app.get("/", (_req, res) => {
       <div id="exitPriceError" class="error"></div>
       <br />
       <button id="settleEntryBtn">Settle Entry</button>
+      <p class="muted">Confirm received. This will finalise the trade.</p>
+      <p id="staleTradeStatus" class="stale-warning"></p>
       <p id="settleStatus" class="muted"></p>
     </section>
 
@@ -180,6 +187,9 @@ app.get("/", (_req, res) => {
         <div class="stat-card"><strong>Average P/L per trade</strong><br/><span id="avgPnlPerTrade">0.0000</span></div>
         <div class="stat-card"><strong>Trade count</strong><br/><span id="tradeCount">0</span></div>
         <div class="stat-card"><strong>Wins / Losses</strong><br/><span id="winLossCount">0 / 0</span></div>
+        <div class="stat-card"><strong>Completion rate</strong><br/><span id="completionRate">0%</span></div>
+        <div class="stat-card"><strong>Avg hours to settle</strong><br/><span id="avgHoursToSettle">n/a</span></div>
+        <div class="stat-card"><strong>Drop-off (&lt;24h / 24-72h / &gt;72h)</strong><br/><span id="dropOffByAge">0 / 0 / 0</span></div>
       </div>
       <label><input type="checkbox" id="hideLowEdgeToggle" /> Hide high-price trades (entry >= 0.95)</label>
       <label><input type="checkbox" id="showTestTradesToggle" checked /> Show test trades</label>
@@ -211,6 +221,7 @@ app.get("/", (_req, res) => {
     <script>
       let cachedDecisions = [];
       let cachedJournalEntries = [];
+      let cachedJournalMetrics = null;
       const VALIDATION_LIVE_MAX_ENTRY_PRICE = 0.7;
       const VALIDATION_LIVE_MIN_EDGE = 0.08;
       const VALIDATION_TARGET_TRADE_COUNT = 30;
@@ -251,7 +262,7 @@ app.get("/", (_req, res) => {
           document.getElementById(id).disabled = !enabled;
         });
         document.getElementById("step2State").textContent = enabled
-          ? "Fill in your bet details, then review the summary before saving."
+          ? "Mark as sent only once you have physically sent the cards, then review before saving."
           : "Complete Step 1 first.";
       }
 
@@ -260,8 +271,55 @@ app.get("/", (_req, res) => {
           document.getElementById(id).disabled = !enabled;
         });
         document.getElementById("step3State").textContent = enabled
-          ? "Choose an open entry and settle it."
+          ? "Choose an open entry and confirm received only when settlement should be final."
           : "Create at least one journal entry first.";
+      }
+
+      function priorityClass(priority) {
+        if (priority === "HIGH") {
+          return "priority-high";
+        }
+        if (priority === "MEDIUM") {
+          return "priority-medium";
+        }
+        return "priority-low";
+      }
+
+      function renderStaleTradeStatus(openEntries) {
+        const staleEl = document.getElementById("staleTradeStatus");
+        if (!Array.isArray(openEntries) || openEntries.length === 0) {
+          staleEl.textContent = "";
+          return;
+        }
+        const staleOpen = openEntries
+          .filter((entry) => entry.stale && entry.stale.isStale)
+          .sort((a, b) => (b.stale.hoursSinceLastAction || 0) - (a.stale.hoursSinceLastAction || 0));
+        if (!staleOpen.length) {
+          staleEl.textContent = "";
+          return;
+        }
+        const candidate = staleOpen[0];
+        const lastHours = typeof candidate.stale.hoursSinceLastAction === "number"
+          ? candidate.stale.hoursSinceLastAction.toFixed(1)
+          : "unknown";
+        staleEl.textContent =
+          "Waiting for @counterparty (last active " + lastHours + "h ago). Consider sending a reminder notification.";
+      }
+
+      function renderCompletionMetrics() {
+        const metrics = cachedJournalMetrics;
+        if (!metrics) {
+          document.getElementById("completionRate").textContent = "0%";
+          document.getElementById("avgHoursToSettle").textContent = "n/a";
+          document.getElementById("dropOffByAge").textContent = "0 / 0 / 0";
+          return;
+        }
+        document.getElementById("completionRate").textContent = Number(metrics.completionRate || 0).toFixed(1) + "%";
+        document.getElementById("avgHoursToSettle").textContent =
+          typeof metrics.avgHoursToSettle === "number" ? metrics.avgHoursToSettle.toFixed(2) : "n/a";
+        const dropOff = metrics.dropOff || { under24h: 0, between24hAnd72h: 0, over72h: 0 };
+        document.getElementById("dropOffByAge").textContent =
+          String(dropOff.under24h || 0) + " / " + String(dropOff.between24hAnd72h || 0) + " / " + String(dropOff.over72h || 0);
       }
 
       function validateStep2() {
@@ -436,6 +494,7 @@ app.get("/", (_req, res) => {
         document.getElementById("winLossCount").textContent = wins + " / " + losses;
         document.getElementById("validationRunCounter").textContent =
           "Validation run: " + liveTradesLogged + " / " + VALIDATION_TARGET_TRADE_COUNT + " live trades logged";
+        renderCompletionMetrics();
 
         rows.innerHTML = visibleEntries.map((entry) => (
           (() => {
@@ -451,7 +510,10 @@ app.get("/", (_req, res) => {
             "<td>" + (entry.manualBetBucket || "n/a") + "</td>" +
             "<td>" + (entry.entryPrice ?? "n/a") + "</td>" +
             "<td>" + (entry.exitPrice ?? "n/a") + "</td>" +
-            "<td>" + entry.status + "</td>" +
+            "<td class='" + priorityClass(entry.notification && entry.notification.priority) + "'>" +
+              entry.status +
+              (entry.notification && entry.notification.priority ? " (" + entry.notification.priority + ")" : "") +
+            "</td>" +
             "<td>" +
               (entry.mode === "live"
                 ? "<span class='mode-badge mode-badge-live'>live</span>"
@@ -474,6 +536,7 @@ app.get("/", (_req, res) => {
         }
 
         const openEntries = visibleEntries.filter((entry) => entry.status === "OPEN");
+        renderStaleTradeStatus(openEntries);
         const openSelect = document.getElementById("openEntrySelect");
         openSelect.innerHTML = openEntries.map((entry) => (
           "<option value='" + entry.id + "'>" + entry.marketExternalId + " | " + (entry.manualBetBucket || "n/a") + "</option>"
@@ -493,6 +556,7 @@ app.get("/", (_req, res) => {
         const response = await fetch("/journal");
         const payload = await response.json();
         cachedJournalEntries = Array.isArray(payload.entries) ? payload.entries : [];
+        cachedJournalMetrics = payload && typeof payload.metrics === "object" ? payload.metrics : null;
         renderJournal();
       }
 
@@ -601,14 +665,23 @@ app.get("/", (_req, res) => {
         const storedMode = body && body.entry && (body.entry.mode === "live" || body.entry.mode === "test")
           ? body.entry.mode
           : "unknown";
+        const notification = body && body.notification ? body.notification : null;
+        const notificationCopy = notification && typeof notification.message === "string"
+          ? " " + notification.message
+          : "";
         document.getElementById("entryStatus").textContent =
-          "Entry saved at " + new Date().toLocaleString() + ". Mode: " + storedMode + ".";
+          "Entry saved at " + new Date().toLocaleString() + ". Mode: " + storedMode + "." + notificationCopy;
         await loadJournal();
       });
 
       document.getElementById("settleEntryBtn").addEventListener("click", async () => {
         if (!validateStep3()) {
           document.getElementById("settleStatus").textContent = "Please fix the highlighted fields.";
+          return;
+        }
+        const shouldProceed = window.confirm("This will permanently transfer ownership of cards and finalise this trade. Continue?");
+        if (!shouldProceed) {
+          document.getElementById("settleStatus").textContent = "Final confirmation cancelled.";
           return;
         }
         const payload = {
@@ -629,8 +702,12 @@ app.get("/", (_req, res) => {
         const entry = body.entry;
         const pnl = entry && typeof entry.profitLoss === "number" ? entry.profitLoss : null;
         const pnlText = pnl === null ? "P/L unavailable" : (pnl >= 0 ? "Profit +" + pnl.toFixed(4) : "Loss " + pnl.toFixed(4));
+        const notification = body && body.notification ? body.notification : null;
+        const notificationPrefix = notification && typeof notification.priority === "string" && typeof notification.message === "string"
+          ? "[" + notification.priority + "] " + notification.message + " "
+          : "";
         document.getElementById("settleStatus").textContent =
-          "Settled at " + new Date().toLocaleString() + ". Outcome: " + entry.resolvedBucket + ". " + pnlText + ".";
+          notificationPrefix + "Settled at " + new Date().toLocaleString() + ". Outcome: " + entry.resolvedBucket + ". " + pnlText + ".";
         await loadJournal();
       });
 

@@ -14,7 +14,7 @@ export const parseMarketRule = (market: ParsedMarket): ParsedMarketRule => {
   return {
     station: market.station,
     unit: market.unit,
-    timeHint: timeMatch ? timeMatch[1] : null,
+    timeHint: typeof timeMatch?.[1] === "string" ? timeMatch[1] : null,
     thresholdHint: thresholdMatch ? Number(thresholdMatch[1]) : null
   };
 };

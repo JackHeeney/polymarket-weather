@@ -1,6 +1,7 @@
 import express from "express";
 import { buildDecisionFeed } from "./decisionFeed.js";
 import {
+  calculateJournalMetrics,
   createJournalEntry,
   listJournalEntries,
   settleJournalEntry
@@ -10,7 +11,39 @@ const app = express();
 const port = Number(process.env.API_PORT ?? 3001);
 const VALIDATION_LIVE_MAX_ENTRY_PRICE = 0.7;
 const VALIDATION_LIVE_MIN_EDGE = 0.08;
+const STALE_TRADE_THRESHOLD_HOURS = Number(process.env.STALE_TRADE_THRESHOLD_HOURS ?? 24);
 app.use(express.json());
+
+type NotificationPriority = "HIGH" | "MEDIUM" | "LOW";
+
+const createJournalNotification = (priority: NotificationPriority, message: string) => ({
+  priority,
+  message,
+  createdAt: new Date().toISOString()
+});
+
+const toEntryView = (entry: Awaited<ReturnType<typeof listJournalEntries>>[number]) => {
+  const lastActionDate = new Date(entry.lastActionAt);
+  const lastActionMs = lastActionDate.getTime();
+  const hoursSinceLastAction = Number.isFinite(lastActionMs)
+    ? Number(((Date.now() - lastActionMs) / (1000 * 60 * 60)).toFixed(1))
+    : null;
+  const isStale = typeof hoursSinceLastAction === "number" && hoursSinceLastAction > STALE_TRADE_THRESHOLD_HOURS;
+  const notification = entry.status === "SETTLED"
+    ? createJournalNotification("HIGH", "Trade completed.")
+    : isStale
+      ? createJournalNotification("MEDIUM", `Waiting for your action. Last activity ${hoursSinceLastAction?.toFixed(1)}h ago.`)
+      : createJournalNotification("LOW", "Trade updated.");
+  return {
+    ...entry,
+    stale: {
+      thresholdHours: STALE_TRADE_THRESHOLD_HOURS,
+      hoursSinceLastAction,
+      isStale
+    },
+    notification
+  };
+};
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
@@ -30,16 +63,20 @@ app.get("/decisions", async (_req, res) => {
 
 app.get("/journal", async (_req, res) => {
   const entries = await listJournalEntries();
-  res.json({ entries });
+  const entryViews = entries.map(toEntryView);
+  const metrics = calculateJournalMetrics(entries);
+  res.json({
+    entries: entryViews,
+    metrics,
+    staleThresholdHours: STALE_TRADE_THRESHOLD_HOURS
+  });
 });
 
 app.post("/journal", async (req, res) => {
   const body = req.body as Record<string, unknown>;
   const marketExternalId = typeof body.marketExternalId === "string" ? body.marketExternalId : "";
-  let mode = String(body.mode || "").trim().toLowerCase();
-  if (mode !== "test" && mode !== "live") {
-    mode = "unknown";
-  }
+  const rawMode = String(body.mode || "").trim().toLowerCase();
+  const mode: "test" | "live" | "unknown" = rawMode === "test" || rawMode === "live" ? rawMode : "unknown";
   if (!marketExternalId) {
     res.status(400).json({ error: "marketExternalId is required." });
     return;
@@ -87,7 +124,10 @@ app.post("/journal", async (req, res) => {
   }
 
   const created = await createJournalEntry(createInput);
-  res.status(201).json({ entry: created });
+  res.status(201).json({
+    entry: toEntryView(created),
+    notification: createJournalNotification("MEDIUM", "Waiting for your action.")
+  });
 });
 
 app.post("/journal/settle", async (req, res) => {
@@ -106,7 +146,10 @@ app.post("/journal/settle", async (req, res) => {
     res.status(404).json({ error: "Journal entry not found." });
     return;
   }
-  res.json({ entry: updated });
+  res.json({
+    entry: toEntryView(updated),
+    notification: createJournalNotification("HIGH", "Trade completed.")
+  });
 });
 
 app.listen(port, () => {

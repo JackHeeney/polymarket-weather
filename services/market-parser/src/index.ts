@@ -12,7 +12,7 @@ const parseCity = (title: string, description: string): string => {
 
 const parseStation = (rules: string): string => {
   const match = rules.match(/station\s+([A-Z0-9]+)/i);
-  return match ? match[1].toUpperCase() : "UNKNOWN";
+  return typeof match?.[1] === "string" ? match[1].toUpperCase() : "UNKNOWN";
 };
 
 const parseResolutionSource = (rules: string): string => {

@@ -96,7 +96,8 @@ const clampProbability = (value: number): number => Math.max(0, Math.min(1, valu
 
 const parseDateFromQuestion = (question: string): string | null => {
   const match = question.match(/\b(\d{4}-\d{2}-\d{2})\b/);
-  return match ? match[1] : null;
+  const matchedDate = match?.[1];
+  return typeof matchedDate === "string" ? matchedDate : null;
 };
 
 const parseArrayField = (value: unknown): string[] => {
@@ -133,10 +134,19 @@ const parseNumberField = (value: unknown): number => {
 
 const normaliseMarketBuckets = (outcomes: string[], prices: number[]): MarketBucket[] => {
   const count = Math.min(outcomes.length, prices.length);
-  return outcomes.slice(0, count).map((label, index) => ({
-    label: label.trim(),
-    marketPrice: prices[index]
-  }));
+  const buckets: MarketBucket[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const label = outcomes[index];
+    const marketPrice = prices[index];
+    if (typeof label !== "string" || typeof marketPrice !== "number") {
+      continue;
+    }
+    buckets.push({
+      label: label.trim(),
+      marketPrice
+    });
+  }
+  return buckets;
 };
 
 const isWeatherMarket = (question: string): boolean => {
@@ -269,7 +279,7 @@ const getMarketLocation = (question: string): { location: string; lat: number; l
 
 const parseBucketRangeC = (label: string): { min: number; max: number } | null => {
   const clean = label.replace(/\s+/g, "").toLowerCase();
-  const rangeMatch = clean.match(/^(-?\d+(?:\.\d+)?)\-(-?\d+(?:\.\d+)?)(c|°c)?$/);
+  const rangeMatch = clean.match(/^(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)(c|°c)?$/);
   if (rangeMatch) {
     return { min: Number(rangeMatch[1]), max: Number(rangeMatch[2]) };
   }
@@ -368,7 +378,7 @@ const fetchMarketSnapshots = async (): Promise<MarketSnapshot[]> => {
   const activeMarkets = await fetchMarketList("?active=true&closed=false&limit=500");
   const fallbackMarkets = await fetchMarketList("?closed=false&limit=500");
   const weatherEvents = await fetchEventList("?closed=false&limit=250");
-  const eventMarkets = weatherEvents.flatMap((event) => {
+  const eventMarkets: Record<string, unknown>[] = weatherEvents.flatMap((event) => {
     const eventTitle = String(event.title ?? event.slug ?? event.ticker ?? "");
     const eventTags = parseTags(event.tags);
     const eventLooksWeather =
@@ -381,7 +391,7 @@ const fetchMarketSnapshots = async (): Promise<MarketSnapshot[]> => {
     return markets.map((market) => ({
       ...market,
       eventTitle
-    }));
+    }) as Record<string, unknown>);
   });
   const allMarkets = [...eventMarkets, ...activeMarkets, ...fallbackMarkets];
 

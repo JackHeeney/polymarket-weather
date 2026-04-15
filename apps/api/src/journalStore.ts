@@ -21,8 +21,21 @@ export interface JournalEntry {
   notes: string;
   status: "OPEN" | "SETTLED";
   settledAt: string | null;
+  lastActionAt: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface JournalMetrics {
+  startedCount: number;
+  completedCount: number;
+  completionRate: number;
+  avgHoursToSettle: number | null;
+  dropOff: {
+    under24h: number;
+    between24hAnd72h: number;
+    over72h: number;
+  };
 }
 
 const storePath = path.resolve(process.cwd(), "data/journal-entries.json");
@@ -43,18 +56,19 @@ const readEntries = async (): Promise<JournalEntry[]> => {
   if (!Array.isArray(parsed)) {
     return [];
   }
-  let hasBackfilledModes = false;
+  let needsBackfill = false;
   const entries = (parsed as Partial<JournalEntry>[]).map((entry) => {
-    if (entry.mode === "test" || entry.mode === "live") {
-      return entry as JournalEntry;
+    const mode = entry.mode === "test" || entry.mode === "live" ? entry.mode : "test";
+    if (entry.mode !== mode || typeof entry.lastActionAt !== "string") {
+      needsBackfill = true;
     }
-    hasBackfilledModes = true;
     return {
       ...entry,
-      mode: "test"
+      mode,
+      lastActionAt: typeof entry.lastActionAt === "string" ? entry.lastActionAt : (entry.updatedAt ?? entry.createdAt ?? new Date().toISOString())
     } as JournalEntry;
   });
-  if (hasBackfilledModes) {
+  if (needsBackfill) {
     await writeEntries(entries);
   }
   return entries;
@@ -112,6 +126,7 @@ export const createJournalEntry = async (input: CreateJournalEntryInput): Promis
     notes: input.notes,
     status: "OPEN",
     settledAt: null,
+    lastActionAt: now,
     createdAt: now,
     updatedAt: now
   };
@@ -133,9 +148,63 @@ export const settleJournalEntry = async (input: SettleJournalEntryInput): Promis
   existing.resolvedBucket = input.resolvedBucket;
   existing.profitLoss = Number(pnl.toFixed(4));
   existing.status = "SETTLED";
-  existing.settledAt = new Date().toISOString();
-  existing.updatedAt = new Date().toISOString();
+  const now = new Date().toISOString();
+  existing.settledAt = now;
+  existing.lastActionAt = now;
+  existing.updatedAt = now;
 
   await writeEntries(entries);
   return existing;
+};
+
+export const calculateJournalMetrics = (entries: JournalEntry[]): JournalMetrics => {
+  const startedCount = entries.length;
+  const settledEntries = entries.filter((entry) => entry.status === "SETTLED" && typeof entry.settledAt === "string");
+  const completedCount = settledEntries.length;
+
+  const hoursToSettle = settledEntries
+    .map((entry) => {
+      const createdMs = new Date(entry.createdAt).getTime();
+      const settledMs = entry.settledAt ? new Date(entry.settledAt).getTime() : Number.NaN;
+      if (!Number.isFinite(createdMs) || !Number.isFinite(settledMs) || settledMs < createdMs) {
+        return null;
+      }
+      return (settledMs - createdMs) / (1000 * 60 * 60);
+    })
+    .filter((value): value is number => value !== null);
+
+  const avgHoursToSettle = hoursToSettle.length
+    ? Number((hoursToSettle.reduce((sum, value) => sum + value, 0) / hoursToSettle.length).toFixed(2))
+    : null;
+
+  const nowMs = Date.now();
+  const openEntries = entries.filter((entry) => entry.status === "OPEN");
+  const dropOff = openEntries.reduce(
+    (acc, entry) => {
+      const createdMs = new Date(entry.createdAt).getTime();
+      if (!Number.isFinite(createdMs)) {
+        return acc;
+      }
+      const openHours = (nowMs - createdMs) / (1000 * 60 * 60);
+      if (openHours < 24) {
+        acc.under24h += 1;
+      } else if (openHours < 72) {
+        acc.between24hAnd72h += 1;
+      } else {
+        acc.over72h += 1;
+      }
+      return acc;
+    },
+    { under24h: 0, between24hAnd72h: 0, over72h: 0 }
+  );
+
+  const completionRate = startedCount > 0 ? Number(((completedCount / startedCount) * 100).toFixed(1)) : 0;
+
+  return {
+    startedCount,
+    completedCount,
+    completionRate,
+    avgHoursToSettle,
+    dropOff
+  };
 };
